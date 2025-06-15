@@ -6,16 +6,13 @@ from sqlalchemy.dialects.postgresql import JSON as PG_JSON
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 from functools import wraps
-from flask_migrate import Migrate
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
-
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://myuser:newpassword@localhost/quizapp'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'devkey')
 
 db = SQLAlchemy(app)
-migrate = Migrate(app, db)
 
 # MODELS
 
@@ -96,6 +93,13 @@ def import_questions_from_json(json_path, category, quiz_title):
             imported += 1
     db.session.commit()
     print(f"Imported {imported} questions for {category}")
+
+def init_db():
+    with app.app_context():
+        db.create_all()
+        import_questions_from_json("questions.json", "Web", "Web Technology Quiz")
+        import_questions_from_json("ai.json", "AI", "AI Fundamentals Quiz")
+        print("✓ Database initialized and questions imported from JSON.")
 
 # ROUTES
 
@@ -239,16 +243,8 @@ def quiz_list():
     quizzes = Quiz.query.all()
     return jsonify([{"title": q.title, "category": q.category} for q in quizzes])
 
-# Utility endpoint for admin/you to import questions after tables are created (optional)
-@app.route('/import_questions', methods=['POST'])
-def import_questions():
-    # Only allow this for logged-in admin or during setup!
-    import_questions_from_json("questions.json", "Web", "Web Technology Quiz")
-    import_questions_from_json("ai.json", "AI", "AI Fundamentals Quiz")
-    return jsonify({"message": "Questions imported."}), 200
-
 if __name__ == '__main__':
-    # For local development only
     os.makedirs('templates', exist_ok=True)
     os.makedirs('static', exist_ok=True)
+    init_db()
     app.run(debug=True, host='0.0.0.0', port=5000)
