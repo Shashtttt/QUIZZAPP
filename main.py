@@ -2,6 +2,7 @@ import json
 import os
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
 from sqlalchemy.dialects.postgresql import JSON as PG_JSON
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
