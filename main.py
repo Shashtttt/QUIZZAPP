@@ -8,7 +8,8 @@ from datetime import datetime
 from functools import wraps
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://myuser:newpassword@localhost/quizapp'
+
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'devkey')
 
