@@ -13,6 +13,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'devkey')
 
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 
 # MODELS
 
@@ -246,5 +247,4 @@ def quiz_list():
 if __name__ == '__main__':
     os.makedirs('templates', exist_ok=True)
     os.makedirs('static', exist_ok=True)
-    init_db()
     app.run(debug=True, host='0.0.0.0', port=5000)
