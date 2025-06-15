@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Scores | Quiz App{% endblock %}
+{% block content %}
+<div class="w-full max-w-3xl bg-gray-800/70 backdrop-blur-xl rounded-2xl shadow-2xl shadow-blue-500/20 p-8 border border-gray-700/50 glass animate-fade-in mt-10">
+    <div class="text-center mb-8">
+        <h2 class="text-3xl font-bold bg-gradient-to-r from-white to-blue-400 bg-clip-text text-transparent text-shadow">
+            Quiz Results
+        </h2>
+        <div class="w-24 h-1 bg-gradient-to-r from-blue-500 to-purple-600 mx-auto mt-3 rounded-full"></div>
+    </div>
+    <div id="allScoreAttempts"></div>
+    <div class="mt-8 text-center">
+        <a href="{{ url_for('quiz_select_page') }}" class="text-blue-400 hover:underline font-semibold">Take another quiz</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function getLetter(idx) { return ["A","B","C","D"][idx] || "?"; }
+function getIndex(letter) {
+    const index = ["A","B","C","D"].indexOf(letter);
+    return index !== -1 ? index : null;
+}
+
+async function fetchUserScores() {
+    const resp = await fetch("/score");
+    return resp.json();
+}
+
+async function fetchQuizQuestions(quiz_id) {
+    const resp = await fetch(`/quiz?quiz_id=${encodeURIComponent(quiz_id)}`);
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    if (!data.questions) return null;
+    return data.questions.map((q) => ({
+        numb: q.id,
+        question: q.question_text,
+        options: [q.options.A, q.options.B, q.options.C, q.options.D],
+        answer: q.correct_option
+    }));
+}
+
+window.addEventListener("DOMContentLoaded", async function() {
+    const allAttemptsEl = document.getElementById('allScoreAttempts');
+    const scoreData = await fetchUserScores();
+
+    if (scoreData.error) {
+        allAttemptsEl.innerHTML = `<div class="text-red-400 text-center">${scoreData.error}</div>`;
+        return;
+    }
+    if (!scoreData.scores.length) {
+        allAttemptsEl.innerHTML = `<div class="text-gray-400 text-center">No quiz attempts yet.</div>`;
+        return;
+    }
+
+    let html = "";
+
+    for (let attemptIdx = 0; attemptIdx < scoreData.scores.length; attemptIdx++) {
+        const attempt = scoreData.scores[attemptIdx];
+        let userAnswers = attempt.answers || {};
+
+        let questions = await fetchQuizQuestions(attempt.quiz_id);
+        if (!questions) {
+            html += `<div class="mb-12 border border-red-400 p-4 rounded text-red-300">Could not load questions for quiz: ${attempt.quiz_title}</div>`;
+            continue;
+        }
+        const maxScore = questions.length;
+        html += `
+        <div class="mb-12 border border-gray-700/40 rounded-xl p-6 bg-gray-900/30">
+            <div class="flex flex-col items-center justify-center mb-6">
+                <div class="text-2xl font-bold text-blue-400">Attempt #${scoreData.scores.length - attemptIdx}</div>
+                <div class="text-lg text-purple-300 mb-1">${attempt.quiz_title}</div>
+                <div class="text-4xl font-bold text-blue-400 mt-1">${attempt.score} / ${maxScore}</div>
+                <div class="text-lg text-gray-300">Correct: ${attempt.score} &nbsp;•&nbsp; Incorrect: ${maxScore - attempt.score}</div>
+                <div class="text-sm text-gray-400 mt-2">Submitted at: ${attempt.submitted_at}</div>
+            </div>
+        `;
+
+        questions.forEach((q, idx) => {
+            let userLetter = userAnswers[q.numb] || userAnswers["" + q.numb];
+            if (!userLetter) {
+                let keys = Object.keys(userAnswers);
+                if (keys.length === questions.length) {
+                    userLetter = userAnswers[keys[idx]];
+                }
+            }
+            let correctLetter = q.answer;
+            let correctIndex = getIndex(correctLetter);
+            let correctText = (correctIndex !== null && typeof q.options[correctIndex] !== "undefined") ? q.options[correctIndex] : "";
+            let userIndex = getIndex(userLetter);
+            let userText = (userIndex !== null && typeof q.options[userIndex] !== "undefined") ? q.options[userIndex] : "";
+            let isCorrect = userLetter && (userLetter === correctLetter);
+
+            html += `
+            <div class="mb-6 bg-gray-900/40 rounded-xl p-6 border border-gray-600/30">
+                <div class="flex items-start space-x-3 mb-3">
+                    <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center font-bold text-white text-sm shadow-lg">
+                        ${idx + 1}
+                    </div>
+                    <div class="font-semibold text-white text-lg leading-relaxed flex-1">
+                        ${q.question}
+                    </div>
+                </div>
+                <div class="ml-11 space-y-2">
+                    <div class="px-3 py-2 rounded bg-green-900/40 text-green-400 font-semibold border border-green-500/30">
+                        <span class="font-mono">${correctLetter})</span> <span>${correctText}</span>
+                        <span class="ml-2 text-green-400 font-medium">(Correct Answer)</span>
+                    </div>
+                    ${
+                        userLetter
+                        ? (isCorrect
+                            ? `<div class="px-3 py-2 rounded bg-green-800/40 text-green-300 border border-green-500/20 mt-1 font-semibold">You answered: (${userLetter}) ${userText} <span class="ml-2">✔️ Correct</span></div>`
+                            : `<div class="px-3 py-2 rounded bg-red-800/40 text-red-300 border border-red-500/20 mt-1 font-semibold">Your answer: (${userLetter}) ${userText} <span class="ml-2">❌ Incorrect</span></div>`
+                          )
+                        : `<div class="mt-2 text-gray-400">No answer provided.</div>`
+                    }
+                </div>
+            </div>
+            `;
+        });
+
+        html += `</div>`;
+    }
+
+    allAttemptsEl.innerHTML = html;
+});
+</script>
+{% endblock %}
