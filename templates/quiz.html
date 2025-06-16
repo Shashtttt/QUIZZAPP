@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+{% block title %}Quiz | Quiz App{% endblock %}
+
+{% block content %}
+<div class="w-full max-w-3xl bg-gray-800/70 rounded-2xl shadow-2xl p-8 border border-gray-700/50">
+    <!-- Timer Section -->
+    <div class="mb-8 text-center">
+        <div class="inline-flex items-center space-x-4 bg-gray-900/60 rounded-xl p-4 border border-gray-600/30">
+            <div class="flex items-center space-x-2">
+                <svg class="w-6 h-6 text-blue-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <span class="text-gray-300 font-medium">Time Remaining:</span>
+            </div>
+            <div id="timer" class="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                05:00
+            </div>
+        </div>
+    </div>
+    <div class="text-center mb-8">
+        <h2 class="text-3xl font-bold bg-gradient-to-r from-white to-blue-400 bg-clip-text text-transparent" id="quizTitle">
+            Quiz
+        </h2>
+        <div class="w-24 h-1 bg-gradient-to-r from-blue-500 to-purple-600 mx-auto mt-3 rounded-full"></div>
+    </div>
+    <div class="mb-8">
+        <div class="flex justify-between text-sm text-gray-400 mb-2">
+            <span>Progress</span>
+            <span id="progressText">0 of 0 answered</span>
+        </div>
+        <div class="w-full bg-gray-700/50 rounded-full h-2">
+            <div id="progressBar" class="bg-gradient-to-r from-blue-500 to-purple-600 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+        </div>
+    </div>
+    <form id="quizForm" class="space-y-8"></form>
+    <button id="submitQuiz" class="mt-8 w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white py-4 rounded-xl font-bold text-lg hover:from-blue-600 hover:to-purple-700 transition">
+        <div class="flex items-center justify-center space-x-2">
+            <span>Submit Quiz</span>
+        </div>
+    </button>
+    <div id="quizMessage" class="mt-8 text-lg text-center font-semibold"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function getCategoryFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('category') || 'Web';
+}
+
+let totalQuestions = 0;
+let answeredQuestions = 0;
+let quizSubmitted = false;
+let selectedCategory = getCategoryFromUrl();
+let quizData = null;  // will hold the {quiz_id, title, category, questions}
+let timerInterval;
+let timeLeft = 300;
+
+// Load questions from the backend
+function loadQuizFromDb(category, callback) {
+    fetch(`/quiz?category=${encodeURIComponent(category)}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data && data.questions && data.questions.length > 0) {
+                quizData = data;
+                callback();
+            } else {
+                showMessage('No questions loaded. Please check your DB.', 'error');
+                document.getElementById('submitQuiz').style.display = 'none';
+            }
+        })
+        .catch(() => {
+            showMessage('Failed to load quiz questions from the server.', 'error');
+            document.getElementById('submitQuiz').style.display = 'none';
+        });
+}
+
+function renderQuiz() {
+    if (!quizData || !quizData.questions || quizData.questions.length === 0) {
+        showMessage('No questions loaded. Please check your DB.', 'error');
+        document.getElementById('submitQuiz').style.display = 'none';
+        return;
+    }
+    totalQuestions = quizData.questions.length;
+    document.getElementById('quizTitle').innerText = quizData.title;
+    const quizForm = document.getElementById('quizForm');
+    let html = '';
+    quizData.questions.forEach((q, idx) => {
+        html += `
+            <div class="bg-gray-900/40 rounded-xl p-6 border border-gray-600/30 mb-4">
+                <div class="flex items-start space-x-3 mb-4">
+                    <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center font-bold text-white text-sm">
+                        ${idx + 1}
+                    </div>
+                    <div class="font-semibold text-white text-lg flex-1">
+                        ${q.question_text}
+                    </div>
+                </div>
+                <div class="grid gap-3 ml-11">
+                    ${["A","B","C","D"].map((letter,i) => `
+                        <label class="flex items-center p-3 rounded-lg border border-gray-600/30 hover:bg-gray-800/50 cursor-pointer transition">
+                            <input type="radio" name="q${q.id}" value="${letter}" class="mr-3 w-4 h-4 text-blue-500 bg-gray-700 border-gray-600" onchange="updateProgress()">
+                            <span class="font-medium text-blue-400 mr-2">${letter})</span>
+                            <span class="text-gray-300">${q.options[letter]}</span>
+                        </label>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    });
+    quizForm.innerHTML = html;
+    updateProgress();
+    startTimer();
+}
+function updateProgress() {
+    const form = document.getElementById('quizForm');
+    const checkedRadios = form.querySelectorAll('input[type=radio]:checked');
+    answeredQuestions = checkedRadios.length;
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+    const percentage = totalQuestions > 0 ? (answeredQuestions / totalQuestions) * 100 : 0;
+    progressBar.style.width = `${percentage}%`;
+    progressText.textContent = `${answeredQuestions} of ${totalQuestions} answered`;
+}
+function showMessage(message, type = 'success') {
+    const messageElement = document.getElementById('quizMessage');
+    let className = '';
+    switch(type) {
+        case 'success': className = 'text-green-400'; break;
+        case 'error': className = 'text-red-400'; break;
+        case 'warning': className = 'text-yellow-400'; break;
+    }
+    messageElement.className = `mt-8 text-lg text-center font-semibold ${className}`;
+    messageElement.textContent = message;
+}
+function startTimer() {
+    const timerElement = document.getElementById('timer');
+    timerInterval = setInterval(() => {
+        timeLeft--;
+        const minutes = Math.floor(timeLeft / 60);
+        const seconds = timeLeft % 60;
+        timerElement.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        if (timeLeft <= 0) {
+            clearInterval(timerInterval);
+            if (!quizSubmitted) {
+                document.getElementById('submitQuiz').click();
+                showMessage('Time\'s up! Quiz submitted automatically.', 'warning');
+            }
+        }
+    }, 1000);
+}
+function collectUserAnswers() {
+    const answers = {};
+    quizData.questions.forEach((q) => {
+        const selected = document.querySelector(`input[name="q${q.id}"]:checked`);
+        if (selected) answers[q.id] = selected.value;
+    });
+    return answers;
+}
+function submitQuizResult(score, userAnswers) {
+    fetch('/submit_quiz', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            quiz_id: quizData.quiz_id,
+            answers: userAnswers,
+            score: score,
+            category: quizData.category
+        })
+    })
+    .then(r => r.json())
+    .then(d => {
+        window.location.href = '/scorepage';
+    })
+    .catch(e => {
+        showMessage('Could not save your result. Please try again.', 'error');
+    });
+}
+document.addEventListener("DOMContentLoaded", function() {
+    loadQuizFromDb(selectedCategory, renderQuiz);
+});
+document.getElementById('submitQuiz').onclick = function(e) {
+    e.preventDefault();
+    if (quizSubmitted) return;
+    quizSubmitted = true;
+    this.disabled = true;
+    let score = 0;
+    quizData.questions.forEach((q) => {
+        const selected = document.querySelector(`input[name="q${q.id}"]:checked`);
+        if (selected && selected.value === q.correct_option) score++;
+    });
+    clearInterval(timerInterval);
+    const percentage = Math.round((score / quizData.questions.length) * 100);
+    let messageType = 'success';
+    let emoji = '🎉';
+    if (percentage < 50) {
+        messageType = 'error';
+        emoji = '💪';
+    } else if (percentage < 80) {
+        messageType = 'warning';
+        emoji = '👍';
+    }
+    showMessage(`${emoji} You scored ${score} out of ${quizData.questions.length} (${percentage}%)!`, messageType);
+    const form = document.getElementById('quizForm');
+    const radioButtons = form.querySelectorAll('input[type=radio]');
+    radioButtons.forEach(radio => radio.disabled = true);
+
+    const userAnswers = collectUserAnswers();
+    submitQuizResult(score, userAnswers);
+};
+</script>
+{% endblock %}
